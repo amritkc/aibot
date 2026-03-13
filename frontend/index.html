@@ -7,65 +7,113 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <div class="ambient-bg"></div>
     <main class="app-shell">
-      <div class="avatar-container">
-        <div class="avatar-header">
-          <h1>SereneTalk</h1>
-          <p class="subtitle">Your AI Mental Health Companion</p>
-        </div>
-
-        <div class="avatar-viewport">
-          <div class="avatar" id="avatar" aria-label="AI companion avatar">
-            <div class="halo"></div>
-            <div class="character" id="character">
+      <!-- Left: Avatar Section -->
+      <section class="avatar-section">
+        <div class="header-badge">SereneTalk</div>
+        <h1>Your Calm Companion</h1>
+        
+        <div class="avatar-container">
+          <div class="avatar" id="avatar">
+            <div class="avatar-shine"></div>
+            <div class="avatar-body">
               <div class="head">
-                <div class="eyes">
-                  <span class="eye left"></span>
-                  <span class="eye right"></span>
+                <div class="hair"></div>
+                <div class="face">
+                  <div class="eyebrows">
+                    <div class="eyebrow left"></div>
+                    <div class="eyebrow right"></div>
+                  </div>
+                  <div class="eyes">
+                    <div class="eye"><div class="pupil"></div></div>
+                    <div class="eye"><div class="pupil"></div></div>
+                  </div>
+                  <div class="blush left"></div>
+                  <div class="blush right"></div>
+                  <div class="mouth" id="mouth"></div>
                 </div>
-                <div class="mouth" id="avatarMouth"></div>
               </div>
-              <div class="torso"></div>
+              <div class="body">
+                <div class="neck"></div>
+                <div class="torso"></div>
+                <div class="arm left"></div>
+                <div class="arm right"></div>
+              </div>
               <div class="legs">
                 <div class="leg left"></div>
                 <div class="leg right"></div>
               </div>
             </div>
           </div>
-          <p id="avatarStatus" class="avatar-status">Companion is here to listen.</p>
         </div>
+        
+        <div id="avatarStatus" class="avatar-status">Ready to listen...</div>
+      </section>
 
-        <div class="chat-input-section">
-          <div id="chatLog" class="chat-log" aria-live="polite"></div>
-
-          <form id="chatForm" class="chat-form">
-            <textarea
-              id="userInput"
-              placeholder="Share how you're feeling..."
-              rows="2"
-              required
-            ></textarea>
-            <div class="form-actions">
-              <button id="voiceBtn" type="button">🎤 Voice</button>
-              <button class="chip" type="button" data-prompt="I feel anxious about my future.">Anxious</button>
-              <button class="chip" type="button" data-prompt="I feel lonely and drained today.">Lonely</button>
-              <button class="chip" type="button" data-prompt="Can you help me calm down now?">Calm</button>
-              <button id="sendBtn" type="submit">Send</button>
+      <!-- Right: Chat & Analysis Section -->
+      <section class="chat-section">
+        <!-- Emotion Analysis Panel -->
+        <div class="emotion-panel">
+          <div class="emotion-grid">
+            <div class="emotion-item">
+              <div class="emotion-label">Emotion</div>
+              <div class="emotion-value" id="emotion">-</div>
             </div>
-          </form>
-
-          <div class="analysis-panel" id="analysisPanel">
-            <p><strong>Emotion:</strong> <span id="emotion">-</span> | <strong>Risk:</strong> <span id="risk">-</span></p>
+            <div class="emotion-item">
+              <div class="emotion-label">Risk Level</div>
+              <div class="emotion-value" id="risk">-</div>
+            </div>
+            <div class="emotion-item">
+              <div class="emotion-label">Confidence</div>
+              <div class="emotion-value" id="confidence">-</div>
+            </div>
+            <div class="emotion-item">
+              <div class="emotion-label">Intensity</div>
+              <div class="emotion-value" id="intensity">-</div>
+            </div>
+          </div>
+          <div class="emotion-rationale">
+            <strong>Insight:</strong> <span id="rationale">Waiting for input...</span>
+          </div>
+          <div class="emotion-resource">
+            <strong>Resource:</strong> <span id="resource">-</span>
           </div>
         </div>
-      </div>
+
+        <!-- Chat Log -->
+        <div id="chatLog" class="chat-log" aria-live="polite"></div>
+
+        <!-- Chat Form -->
+        <form id="chatForm" class="chat-form">
+          <textarea
+            id="userInput"
+            placeholder="Tell me what's on your mind..."
+            rows="3"
+            required
+          ></textarea>
+          
+          <div class="form-buttons">
+            <button id="voiceBtn" type="button" title="Voice input">🎤</button>
+            <button id="audioToggleBtn" type="button" title="Enable or disable voice output">Audio Off</button>
+            <button id="stopAudioBtn" type="button" title="Stop speaking now" disabled>Stop</button>
+            <button id="pauseBtn" type="button" title="Pause/Resume" disabled>⏸</button>
+            <button id="sendBtn" type="submit">Send →</button>
+          </div>
+          
+          <div class="quick-prompts">
+            <button class="quick-btn" type="button" data-prompt="I feel anxious and overwhelmed today.">Anxious</button>
+            <button class="quick-btn" type="button" data-prompt="I'm feeling lonely and disconnected.">Lonely</button>
+            <button class="quick-btn" type="button" data-prompt="Help me calm down and breathe.">Calm</button>
+            <button class="quick-btn" type="button" data-prompt="I need some motivation today.">Motivation</button>
+          </div>
+        </form>
+      </section>
     </main>
 
     <script src="/static/app.js"></script>

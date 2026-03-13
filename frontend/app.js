@@ -1,20 +1,56 @@
+// Cached DOM Elements
 const chatForm = document.getElementById("chatForm");
 const userInput = document.getElementById("userInput");
 const chatLog = document.getElementById("chatLog");
 const sendBtn = document.getElementById("sendBtn");
 const voiceBtn = document.getElementById("voiceBtn");
-const breathBtn = document.getElementById("breathBtn");
+const audioToggleBtn = document.getElementById("audioToggleBtn");
+const stopAudioBtn = document.getElementById("stopAudioBtn");
+const pauseBtn = document.getElementById("pauseBtn");
 const avatar = document.getElementById("avatar");
 const avatarStatus = document.getElementById("avatarStatus");
-const chips = document.querySelectorAll(".chip[data-prompt]");
+const mouth = document.getElementById("mouth");
+const quickBtns = document.querySelectorAll(".quick-btn");
 
-const emotion = document.getElementById("emotion");
-const intensity = document.getElementById("intensity");
-const risk = document.getElementById("risk");
-const confidence = document.getElementById("confidence");
-const rationale = document.getElementById("rationale");
-const resource = document.getElementById("resource");
+// Emotion Display Elements
+const emotionEl = document.getElementById("emotion");
+const riskEl = document.getElementById("risk");
+const confidenceEl = document.getElementById("confidence");
+const intensityEl = document.getElementById("intensity");
+const rationaleEl = document.getElementById("rationale");
+const resourceEl = document.getElementById("resource");
 
+// State
+let currentUtterance = null;
+let isSpeaking = false;
+let audioEnabled = localStorage.getItem("serenetalk_audio_enabled") === "true";
+
+function stopSpeech(status = "Speech stopped.") {
+  window.speechSynthesis.cancel();
+  isSpeaking = false;
+  currentUtterance = null;
+  pauseBtn.disabled = true;
+  pauseBtn.textContent = "⏸";
+  if (stopAudioBtn) stopAudioBtn.disabled = true;
+  setAvatarState("calm", status, false, false);
+}
+
+function updateAudioToggleUi() {
+  if (!audioToggleBtn) return;
+  audioToggleBtn.textContent = audioEnabled ? "Audio On" : "Audio Off";
+  audioToggleBtn.setAttribute("aria-pressed", String(audioEnabled));
+}
+
+// Prevent queued speech from continuing after refresh/navigation.
+window.speechSynthesis.cancel();
+window.addEventListener("beforeunload", () => {
+  window.speechSynthesis.cancel();
+});
+window.addEventListener("pagehide", () => {
+  window.speechSynthesis.cancel();
+});
+
+// ===== UTILITY FUNCTIONS =====
 function addMessage(text, role) {
   const div = document.createElement("div");
   div.className = `msg ${role}`;
@@ -27,56 +63,134 @@ function addTypingIndicator() {
   const div = document.createElement("div");
   div.className = "msg bot";
   div.id = "typingMsg";
-  div.innerHTML =
-    '<span class="typing-indicator"><span></span><span></span><span></span></span>';
+  div.innerHTML = '<span class="typing-indicator"><span></span><span></span><span></span></span>';
   chatLog.appendChild(div);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function removeTypingIndicator() {
-  const typing = document.getElementById("typingMsg");
-  if (typing) typing.remove();
+  const msg = document.getElementById("typingMsg");
+  if (msg) msg.remove();
 }
 
-function setAvatarState(mood, status, speaking = false, walking = false) {
-  avatar.classList.remove("mood-calm", "mood-distress", "walking");
-  avatar.classList.add(mood === "distress" ? "mood-distress" : "mood-calm");
+function setAvatarState(mood = "calm", status = "", speaking = false, walking = false) {
+  avatar.classList.remove("mood-calm", "mood-distress", "mood-success", "walking", "speaking");
+  
+  if (mood === "distress") {
+    avatar.classList.add("mood-distress");
+  } else if (mood === "success") {
+    avatar.classList.add("mood-success");
+  } else {
+    avatar.classList.add("mood-calm");
+  }
 
   if (speaking) avatar.classList.add("speaking");
-  else avatar.classList.remove("speaking");
-
   if (walking) avatar.classList.add("walking");
 
-  avatarStatus.textContent = status;
+  if (status) avatarStatus.textContent = status;
 }
 
-function animateBotSpeaking(text) {
-  const duration = Math.max(1200, Math.min(4200, text.length * 30));
-  setAvatarState("calm", "Companion is speaking with care.", true, false);
-  setTimeout(() => {
-    setAvatarState("calm", "Companion is calm and listening.", false, false);
-  }, duration);
-}
+function updateEmotionDisplay(analysis, resource) {
+  emotionEl.textContent = analysis.primary_emotion || "-";
+  riskEl.textContent = analysis.risk_level || "-";
+  confidenceEl.textContent = (Number(analysis.confidence) * 100).toFixed(0) + "%";
+  intensityEl.textContent = (Number(analysis.intensity) * 10).toFixed(1) + "/10";
+  rationaleEl.textContent = analysis.rationale || "Analyzing your emotional state...";
+  resourceEl.textContent = resource || "No specific referral needed right now.";
 
-function updateAnalysis(analysis, resourceSuggestion) {
-  emotion.textContent = analysis.primary_emotion;
-  intensity.textContent = Number(analysis.intensity).toFixed(2);
-  risk.textContent = analysis.risk_level;
-  confidence.textContent = Number(analysis.confidence).toFixed(2);
-  rationale.textContent = analysis.rationale;
-  resource.textContent = resourceSuggestion || "No specific referral needed right now";
-
-  const distressMood =
-    analysis.risk_level === "high" ||
+  // Update mood based on analysis
+  const isDistress = analysis.risk_level === "high" || 
     (analysis.risk_level === "moderate" && Number(analysis.intensity) > 0.7);
-
-  if (distressMood) {
-    setAvatarState("distress", "Companion senses distress and is focusing support.", false);
+  
+  if (isDistress) {
+    setAvatarState("distress", "I sense you need support...", false);
+  } else if (analysis.risk_level === "low") {
+    setAvatarState("success", "You're in a good place.", false);
   } else {
-    setAvatarState("calm", "Companion is calm and listening.", false);
+    setAvatarState("calm", "I'm here to listen.", false);
   }
 }
 
+// ===== VOICE SYNTHESIS (TTS) WITH PAUSE/RESUME =====
+function getFemaleVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  
+  // Priority female voices
+  const femaleKeywords = ["female", "woman", "samantha", "karen", "moira", "victoria", "fiona", "zira"];
+  
+  let femaleVoice = voices.find(v => 
+    femaleKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
+  );
+  
+  // Fallback to any non-male voice
+  if (!femaleVoice && voices.length > 1) {
+    femaleVoice = voices.find(v => !v.name.includes("Male"));
+  }
+  
+  // Final fallback
+  return femaleVoice || voices[0];
+}
+
+function speakText(text) {
+  if (!audioEnabled) {
+    setAvatarState("calm", "Audio is off. Turn on Audio to hear voice.", false, false);
+    return;
+  }
+
+  if (currentUtterance) {
+    window.speechSynthesis.cancel();
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.95;
+  utterance.pitch = 1.2;
+  utterance.volume = 1;
+  utterance.voice = getFemaleVoice();
+
+  utterance.onstart = () => {
+    isSpeaking = true;
+    setAvatarState("calm", "Speaking to you with care...", true, false);
+    pauseBtn.disabled = false;
+    if (stopAudioBtn) stopAudioBtn.disabled = false;
+  };
+
+  utterance.onend = () => {
+    isSpeaking = false;
+    setAvatarState("calm", "I'm listening...", false, false);
+    pauseBtn.disabled = true;
+    if (stopAudioBtn) stopAudioBtn.disabled = true;
+    mouth.style.animation = "none";
+  };
+
+  utterance.onerror = (event) => {
+    console.error("TTS Error:", event.error);
+    isSpeaking = false;
+    setAvatarState("calm", "I'm listening...", false, false);
+    pauseBtn.disabled = true;
+    if (stopAudioBtn) stopAudioBtn.disabled = true;
+  };
+
+  currentUtterance = utterance;
+  window.speechSynthesis.speak(utterance);
+
+  // Sync mouth animation with speech
+  syncMouthWithSpeech();
+}
+
+function syncMouthWithSpeech() {
+  if (!isSpeaking) return;
+  
+  const randomDelay = Math.random() * 150;
+  setTimeout(() => {
+    if (isSpeaking) {
+      syncMouthWithSpeech();
+    }
+  }, randomDelay + 100);
+}
+
+// ===== EVENT LISTENERS =====
+
+// Chat Form Submit
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -87,8 +201,7 @@ chatForm.addEventListener("submit", async (event) => {
   userInput.value = "";
 
   sendBtn.disabled = true;
-  sendBtn.textContent = "Thinking...";
-  setAvatarState("calm", "Companion is pacing and analyzing how you feel...", false, true);
+  setAvatarState("calm", "Thinking carefully about what you said...", false, true);
   addTypingIndicator();
 
   try {
@@ -98,91 +211,133 @@ chatForm.addEventListener("submit", async (event) => {
       body: JSON.stringify({ message }),
     });
 
-    if (!response.ok) {
-      throw new Error(`Request failed with ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
     removeTypingIndicator();
     addMessage(data.reply, "bot");
-    updateAnalysis(data.analysis, data.resource_suggestion);
-    animateBotSpeaking(data.reply);
+    updateEmotionDisplay(data.analysis, data.resource_suggestion);
+
+    // Give a short delay before speaking
+    setTimeout(() => speakText(data.reply), 500);
   } catch (error) {
     removeTypingIndicator();
-    addMessage(
-      "I could not process that right now. Please try again in a moment.",
-      "bot"
-    );
-    setAvatarState("distress", "Companion hit a connection issue. Try once more.", false);
-    console.error(error);
+    addMessage("I had trouble processing that. Please try again.", "bot");
+    setAvatarState("distress", "Connection issue. Please retry.", false);
+    console.error("Error:", error);
   } finally {
     sendBtn.disabled = false;
-    sendBtn.textContent = "Send";
   }
 });
 
-addMessage(
-  "Hi, I am here to listen. You can share what has been on your mind today.",
-  "bot"
-);
-setAvatarState("calm", "Companion is calm and listening.", false);
+// Pause/Resume Button
+pauseBtn.addEventListener("click", (event) => {
+  event.preventDefault();
+  
+  if (!isSpeaking) return;
 
-chips.forEach((chip) => {
-  chip.addEventListener("click", () => {
-    userInput.value = chip.dataset.prompt || "";
-    userInput.focus();
-  });
+  if (window.speechSynthesis.paused) {
+    window.speechSynthesis.resume();
+    pauseBtn.textContent = "⏸";
+    setAvatarState("calm", "Continuing...", true, false);
+  } else {
+    window.speechSynthesis.pause();
+    pauseBtn.textContent = "▶";
+    setAvatarState("calm", "Paused.", false, false);
+  }
 });
 
-if (breathBtn) {
-  breathBtn.addEventListener("click", async () => {
-    const steps = [
-      "Breathe in for 4 seconds.",
-      "Hold for 4 seconds.",
-      "Breathe out for 6 seconds.",
-      "Nice work. Repeat this cycle 3 times.",
-    ];
+if (audioToggleBtn) {
+  audioToggleBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    audioEnabled = !audioEnabled;
+    localStorage.setItem("serenetalk_audio_enabled", String(audioEnabled));
+    updateAudioToggleUi();
 
-    setAvatarState("calm", "Companion is guiding a breathing pause.", true);
-    for (const step of steps) {
-      addMessage(step, "bot");
-      await new Promise((resolve) => setTimeout(resolve, 1600));
+    if (!audioEnabled) {
+      stopSpeech("Audio is off.");
+    } else {
+      setAvatarState("calm", "Audio is on. I can speak now.", false, false);
     }
-    setAvatarState("calm", "Companion is calm and listening.", false);
   });
 }
 
-const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
+if (stopAudioBtn) {
+  stopAudioBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    stopSpeech("Speech stopped.");
+  });
+}
+
+// Voice Input Button
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (SpeechRecognition && voiceBtn) {
   const recognition = new SpeechRecognition();
   recognition.lang = "en-US";
   recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
 
-  voiceBtn.addEventListener("click", () => {
-    voiceBtn.disabled = true;
-    voiceBtn.textContent = "Listening...";
-    recognition.start();
+  voiceBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    
+    if (isSpeaking) {
+      // Stop current speech if speaking
+      window.speechSynthesis.cancel();
+      isSpeaking = false;
+      pauseBtn.disabled = true;
+      setAvatarState("calm", "I'm listening...", false, false);
+    } else {
+      // Start voice recognition
+      voiceBtn.textContent = "...";
+      voiceBtn.disabled = true;
+      setAvatarState("calm", "Tell me what's on your mind...", false, false);
+      recognition.start();
+    }
   });
 
   recognition.onresult = (event) => {
     const transcript = event.results[0][0].transcript || "";
     userInput.value = transcript;
-    setAvatarState("calm", "Companion captured your voice input.", false);
+    setAvatarState("calm", "Got it! Ready to send?", false, false);
   };
 
   recognition.onend = () => {
+    voiceBtn.textContent = "🎤";
     voiceBtn.disabled = false;
-    voiceBtn.textContent = "Use Voice";
   };
 
-  recognition.onerror = () => {
-    addMessage("Voice input failed. Please type your message instead.", "bot");
-    setAvatarState("distress", "Companion could not hear clearly. Please type.", false);
+  recognition.onerror = (event) => {
+    addMessage("Couldn't hear that clearly. Please type instead.", "bot");
+    setAvatarState("distress", "Voice recognition failed.", false);
+    voiceBtn.textContent = "🎤";
+    voiceBtn.disabled = false;
   };
 } else if (voiceBtn) {
   voiceBtn.disabled = true;
-  voiceBtn.textContent = "Voice Not Supported";
+  voiceBtn.textContent = "🎤 Not Supported";
 }
+
+// Quick Prompt Buttons
+quickBtns.forEach((btn) => {
+  btn.addEventListener("click", (event) => {
+    event.preventDefault();
+    userInput.value = btn.dataset.prompt || "";
+    userInput.focus();
+  });
+});
+
+// Initialize Voices
+window.speechSynthesis.onvoiceschanged = () => {
+  getFemaleVoice();
+};
+
+// Welcome Message
+addMessage("Hi there! 👋 I'm here to listen and support you. Tell me what's on your mind.", "bot");
+setAvatarState("calm", "Ready to listen...", false);
+updateAudioToggleUi();
+
+// Auto-grow textarea
+userInput.addEventListener("input", () => {
+  userInput.style.height = "auto";
+  userInput.style.height = Math.min(userInput.scrollHeight, 120) + "px";
+});
