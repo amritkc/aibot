@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SereneTalk - AI Mental Health Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="ambient-bg"></div>
+    <main class="app-shell">
+      <div class="avatar-container">
+        <div class="avatar-header">
+          <h1>SereneTalk</h1>
+          <p class="subtitle">Your AI Mental Health Companion</p>
+        </div>
+
+        <div class="avatar-viewport">
+          <div class="avatar" id="avatar" aria-label="AI companion avatar">
+            <div class="halo"></div>
+            <div class="character" id="character">
+              <div class="head">
+                <div class="eyes">
+                  <span class="eye left"></span>
+                  <span class="eye right"></span>
+                </div>
+                <div class="mouth" id="avatarMouth"></div>
+              </div>
+              <div class="torso"></div>
+              <div class="legs">
+                <div class="leg left"></div>
+                <div class="leg right"></div>
+              </div>
+            </div>
+          </div>
+          <p id="avatarStatus" class="avatar-status">Companion is here to listen.</p>
+        </div>
+
+        <div class="chat-input-section">
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+
+          <form id="chatForm" class="chat-form">
+            <textarea
+              id="userInput"
+              placeholder="Share how you're feeling..."
+              rows="2"
+              required
+            ></textarea>
+            <div class="form-actions">
+              <button id="voiceBtn" type="button">🎤 Voice</button>
+              <button class="chip" type="button" data-prompt="I feel anxious about my future.">Anxious</button>
+              <button class="chip" type="button" data-prompt="I feel lonely and drained today.">Lonely</button>
+              <button class="chip" type="button" data-prompt="Can you help me calm down now?">Calm</button>
+              <button id="sendBtn" type="submit">Send</button>
+            </div>
+          </form>
+
+          <div class="analysis-panel" id="analysisPanel">
+            <p><strong>Emotion:</strong> <span id="emotion">-</span> | <strong>Risk:</strong> <span id="risk">-</span></p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
