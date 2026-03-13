@@ -21,35 +21,7 @@
         
         <div class="avatar-container">
           <div class="avatar" id="avatar">
-            <div class="avatar-shine"></div>
-            <div class="avatar-body">
-              <div class="head">
-                <div class="hair"></div>
-                <div class="face">
-                  <div class="eyebrows">
-                    <div class="eyebrow left"></div>
-                    <div class="eyebrow right"></div>
-                  </div>
-                  <div class="eyes">
-                    <div class="eye"><div class="pupil"></div></div>
-                    <div class="eye"><div class="pupil"></div></div>
-                  </div>
-                  <div class="blush left"></div>
-                  <div class="blush right"></div>
-                  <div class="mouth" id="mouth"></div>
-                </div>
-              </div>
-              <div class="body">
-                <div class="neck"></div>
-                <div class="torso"></div>
-                <div class="arm left"></div>
-                <div class="arm right"></div>
-              </div>
-              <div class="legs">
-                <div class="leg left"></div>
-                <div class="leg right"></div>
-              </div>
-            </div>
+            <canvas id="avatarCanvas" aria-label="3D avatar canvas"></canvas>
           </div>
         </div>
         
@@ -116,6 +88,7 @@
       </section>
     </main>
 
+    <script type="module" src="/static/avatar3d.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>

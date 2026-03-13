@@ -3,3 +3,5 @@ uvicorn==0.34.0
 groq==0.20.0
 python-dotenv==1.0.1
 pydantic==2.10.6
+edge-tts==6.1.12
+pyttsx3==2.98

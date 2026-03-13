@@ -9,7 +9,6 @@ const stopAudioBtn = document.getElementById("stopAudioBtn");
 const pauseBtn = document.getElementById("pauseBtn");
 const avatar = document.getElementById("avatar");
 const avatarStatus = document.getElementById("avatarStatus");
-const mouth = document.getElementById("mouth");
 const quickBtns = document.querySelectorAll(".quick-btn");
 
 // Emotion Display Elements
@@ -21,14 +20,30 @@ const rationaleEl = document.getElementById("rationale");
 const resourceEl = document.getElementById("resource");
 
 // State
+let currentAudio = null;
+let currentAudioUrl = null;
 let currentUtterance = null;
 let isSpeaking = false;
 let audioEnabled = localStorage.getItem("serenetalk_audio_enabled") === "true";
 
 function stopSpeech(status = "Speech stopped.") {
-  window.speechSynthesis.cancel();
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+    currentAudio.onplay = null;
+    currentAudio.onended = null;
+    currentAudio.onerror = null;
+    currentAudio = null;
+  }
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+  if (currentUtterance) {
+    window.speechSynthesis.cancel();
+    currentUtterance = null;
+  }
   isSpeaking = false;
-  currentUtterance = null;
   pauseBtn.disabled = true;
   pauseBtn.textContent = "⏸";
   if (stopAudioBtn) stopAudioBtn.disabled = true;
@@ -41,13 +56,12 @@ function updateAudioToggleUi() {
   audioToggleBtn.setAttribute("aria-pressed", String(audioEnabled));
 }
 
-// Prevent queued speech from continuing after refresh/navigation.
-window.speechSynthesis.cancel();
+// Prevent queued audio from continuing after refresh/navigation.
 window.addEventListener("beforeunload", () => {
-  window.speechSynthesis.cancel();
+  stopSpeech("Audio stopped.");
 });
 window.addEventListener("pagehide", () => {
-  window.speechSynthesis.cancel();
+  stopSpeech("Audio stopped.");
 });
 
 // ===== UTILITY FUNCTIONS =====
@@ -87,6 +101,12 @@ function setAvatarState(mood = "calm", status = "", speaking = false, walking = 
   if (speaking) avatar.classList.add("speaking");
   if (walking) avatar.classList.add("walking");
 
+  if (window.avatar3dController) {
+    window.avatar3dController.setMood(mood);
+    window.avatar3dController.setSpeaking(Boolean(speaking));
+    window.avatar3dController.setWalking(Boolean(walking));
+  }
+
   if (status) avatarStatus.textContent = status;
 }
 
@@ -111,81 +131,111 @@ function updateEmotionDisplay(analysis, resource) {
   }
 }
 
-// ===== VOICE SYNTHESIS (TTS) WITH PAUSE/RESUME =====
-function getFemaleVoice() {
-  const voices = window.speechSynthesis.getVoices();
-  
-  // Priority female voices
-  const femaleKeywords = ["female", "woman", "samantha", "karen", "moira", "victoria", "fiona", "zira"];
-  
-  let femaleVoice = voices.find(v => 
-    femaleKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
-  );
-  
-  // Fallback to any non-male voice
-  if (!femaleVoice && voices.length > 1) {
-    femaleVoice = voices.find(v => !v.name.includes("Male"));
-  }
-  
-  // Final fallback
-  return femaleVoice || voices[0];
-}
-
-function speakText(text) {
+// ===== BACKEND TTS AUDIO =====
+async function speakText(text) {
   if (!audioEnabled) {
     setAvatarState("calm", "Audio is off. Turn on Audio to hear voice.", false, false);
     return;
   }
 
-  if (currentUtterance) {
-    window.speechSynthesis.cancel();
+  stopSpeech("Preparing audio...");
+
+  try {
+    const ttsResponse = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!ttsResponse.ok) {
+      throw new Error(`TTS failed: ${ttsResponse.status}`);
+    }
+
+    const audioBlob = await ttsResponse.blob();
+    currentAudioUrl = URL.createObjectURL(audioBlob);
+    currentAudio = new Audio(currentAudioUrl);
+
+    currentAudio.onplay = () => {
+      isSpeaking = true;
+      setAvatarState("calm", "Speaking to you with care...", true, false);
+      pauseBtn.disabled = false;
+      if (stopAudioBtn) stopAudioBtn.disabled = false;
+    };
+
+    currentAudio.onended = () => {
+      if (currentAudioUrl) {
+        URL.revokeObjectURL(currentAudioUrl);
+        currentAudioUrl = null;
+      }
+      currentAudio = null;
+      isSpeaking = false;
+      setAvatarState("calm", "I'm listening...", false, false);
+      pauseBtn.disabled = true;
+      pauseBtn.textContent = "⏸";
+      if (stopAudioBtn) stopAudioBtn.disabled = true;
+    };
+
+    currentAudio.onerror = () => {
+      stopSpeech("Audio playback failed.");
+    };
+
+    await currentAudio.play();
+  } catch (error) {
+    console.error("Backend audio error:", error);
+    speakWithBrowserFallback(text);
   }
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 0.95;
-  utterance.pitch = 1.2;
-  utterance.volume = 1;
-  utterance.voice = getFemaleVoice();
-
-  utterance.onstart = () => {
-    isSpeaking = true;
-    setAvatarState("calm", "Speaking to you with care...", true, false);
-    pauseBtn.disabled = false;
-    if (stopAudioBtn) stopAudioBtn.disabled = false;
-  };
-
-  utterance.onend = () => {
-    isSpeaking = false;
-    setAvatarState("calm", "I'm listening...", false, false);
-    pauseBtn.disabled = true;
-    if (stopAudioBtn) stopAudioBtn.disabled = true;
-    mouth.style.animation = "none";
-  };
-
-  utterance.onerror = (event) => {
-    console.error("TTS Error:", event.error);
-    isSpeaking = false;
-    setAvatarState("calm", "I'm listening...", false, false);
-    pauseBtn.disabled = true;
-    if (stopAudioBtn) stopAudioBtn.disabled = true;
-  };
-
-  currentUtterance = utterance;
-  window.speechSynthesis.speak(utterance);
-
-  // Sync mouth animation with speech
-  syncMouthWithSpeech();
 }
 
-function syncMouthWithSpeech() {
-  if (!isSpeaking) return;
-  
-  const randomDelay = Math.random() * 150;
-  setTimeout(() => {
-    if (isSpeaking) {
-      syncMouthWithSpeech();
-    }
-  }, randomDelay + 100);
+function getFemaleVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  const femaleKeywords = ["female", "woman", "samantha", "karen", "moira", "victoria", "fiona", "zira"];
+  let femaleVoice = voices.find((v) =>
+    femaleKeywords.some((keyword) => v.name.toLowerCase().includes(keyword))
+  );
+  if (!femaleVoice && voices.length > 1) {
+    femaleVoice = voices.find((v) => !v.name.includes("Male"));
+  }
+  return femaleVoice || voices[0];
+}
+
+function speakWithBrowserFallback(text) {
+  if (!audioEnabled) return;
+
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1.15;
+    utterance.volume = 1;
+
+    const v = getFemaleVoice();
+    if (v) utterance.voice = v;
+
+    utterance.onstart = () => {
+      isSpeaking = true;
+      currentUtterance = utterance;
+      setAvatarState("calm", "Speaking (fallback mode)...", true, false);
+      pauseBtn.disabled = false;
+      if (stopAudioBtn) stopAudioBtn.disabled = false;
+    };
+
+    utterance.onend = () => {
+      isSpeaking = false;
+      currentUtterance = null;
+      pauseBtn.disabled = true;
+      pauseBtn.textContent = "⏸";
+      if (stopAudioBtn) stopAudioBtn.disabled = true;
+      setAvatarState("calm", "I'm listening...", false, false);
+    };
+
+    utterance.onerror = () => {
+      stopSpeech("Audio unavailable right now.");
+    };
+
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    stopSpeech("Audio unavailable right now.");
+  }
 }
 
 // ===== EVENT LISTENERS =====
@@ -219,7 +269,8 @@ chatForm.addEventListener("submit", async (event) => {
     updateEmotionDisplay(data.analysis, data.resource_suggestion);
 
     // Give a short delay before speaking
-    setTimeout(() => speakText(data.reply), 500);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await speakText(data.reply);
   } catch (error) {
     removeTypingIndicator();
     addMessage("I had trouble processing that. Please try again.", "bot");
@@ -236,14 +287,33 @@ pauseBtn.addEventListener("click", (event) => {
   
   if (!isSpeaking) return;
 
-  if (window.speechSynthesis.paused) {
-    window.speechSynthesis.resume();
-    pauseBtn.textContent = "⏸";
-    setAvatarState("calm", "Continuing...", true, false);
+  if (currentAudio) {
+    if (currentAudio.paused) {
+      currentAudio.play().catch(() => {
+        stopSpeech("Unable to resume audio.");
+      });
+      pauseBtn.textContent = "⏸";
+      setAvatarState("calm", "Continuing...", true, false);
+    } else {
+      currentAudio.pause();
+      pauseBtn.textContent = "▶";
+      setAvatarState("calm", "Paused.", false, false);
+    }
+    return;
+  }
+
+  if (currentUtterance) {
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      pauseBtn.textContent = "⏸";
+      setAvatarState("calm", "Continuing...", true, false);
+    } else {
+      window.speechSynthesis.pause();
+      pauseBtn.textContent = "▶";
+      setAvatarState("calm", "Paused.", false, false);
+    }
   } else {
-    window.speechSynthesis.pause();
-    pauseBtn.textContent = "▶";
-    setAvatarState("calm", "Paused.", false, false);
+    pauseBtn.disabled = true;
   }
 });
 
@@ -282,10 +352,7 @@ if (SpeechRecognition && voiceBtn) {
     
     if (isSpeaking) {
       // Stop current speech if speaking
-      window.speechSynthesis.cancel();
-      isSpeaking = false;
-      pauseBtn.disabled = true;
-      setAvatarState("calm", "I'm listening...", false, false);
+      stopSpeech("Speech stopped.");
     } else {
       // Start voice recognition
       voiceBtn.textContent = "...";
@@ -325,11 +392,6 @@ quickBtns.forEach((btn) => {
     userInput.focus();
   });
 });
-
-// Initialize Voices
-window.speechSynthesis.onvoiceschanged = () => {
-  getFemaleVoice();
-};
 
 // Welcome Message
 addMessage("Hi there! 👋 I'm here to listen and support you. Tell me what's on your mind.", "bot");

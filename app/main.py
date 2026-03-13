@@ -1,13 +1,14 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.models import ChatRequest, ChatResponse, EmotionAnalysis
+from app.models import ChatRequest, ChatResponse, EmotionAnalysis, TTSRequest
 from app.services.groq_client import GroqService
 from app.services.safety import crisis_response, detect_high_risk_text
+from app.services.tts_service import TTSService
 
 app = FastAPI(title="AI Mental Health Chatbot", version="1.0.0")
 
@@ -26,6 +27,7 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 service = GroqService()
+tts_service = TTSService()
 
 
 @app.get("/api/health")
@@ -76,3 +78,20 @@ def chat(payload: ChatRequest) -> ChatResponse:
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.post("/api/tts")
+async def tts(payload: TTSRequest) -> Response:
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    try:
+        audio, media_type = await tts_service.synthesize(text)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="TTS temporarily unavailable") from exc
+
+    if not audio:
+        raise HTTPException(status_code=500, detail="Failed to synthesize audio")
+
+    return Response(content=audio, media_type=media_type)

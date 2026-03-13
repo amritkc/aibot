@@ -5,6 +5,10 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
 
 
+class TTSRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
 class EmotionAnalysis(BaseModel):
     primary_emotion: str
     intensity: float
